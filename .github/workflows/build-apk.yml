@@ -1,0 +1,90 @@
+name: Build Hemayat WebApp APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  build-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Detect Flutter project
+        id: detect_project
+        shell: bash
+        run: |
+          set -e
+
+          echo "Checking project structure..."
+
+          PROJECT_DIR=""
+
+          if [ -f "pubspec.yaml" ]; then
+            PROJECT_DIR="$PWD"
+            echo "Flutter project found in repository root."
+          else
+            echo "pubspec.yaml not found in root. Searching for ZIP file..."
+
+            ZIP_FILE=$(find . -maxdepth 2 -type f -name "*.zip" | head -n 1 || true)
+
+            if [ -z "$ZIP_FILE" ]; then
+              echo "No ZIP file found and no pubspec.yaml in root."
+              exit 1
+            fi
+
+            echo "Found ZIP file: $ZIP_FILE"
+            mkdir -p extracted_project
+            unzip -q "$ZIP_FILE" -d extracted_project
+
+            PUBSPEC_PATH=$(find extracted_project -type f -name "pubspec.yaml" | head -n 1 || true)
+
+            if [ -z "$PUBSPEC_PATH" ]; then
+              echo "pubspec.yaml not found inside ZIP."
+              exit 1
+            fi
+
+            PROJECT_DIR=$(dirname "$PUBSPEC_PATH")
+            echo "Flutter project found at: $PROJECT_DIR"
+          fi
+
+          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Get dependencies
+        working-directory: ${{ steps.detect_project.outputs.project_dir }}
+        run: flutter pub get
+
+      - name: Analyze project
+        working-directory: ${{ steps.detect_project.outputs.project_dir }}
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Build release APK
+        working-directory: ${{ steps.detect_project.outputs.project_dir }}
+        run: flutter build apk --release --no-shrink
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hemayat-webapp-release-apk
+          path: ${{ steps.detect_project.outputs.project_dir }}/build/app/outputs/flutter-apk/app-release.apk
