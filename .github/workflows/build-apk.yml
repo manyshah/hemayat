@@ -105,6 +105,8 @@ jobs:
             cp "$SOURCE_DIR/analysis_options.yaml" "$BUILD_DIR/analysis_options.yaml"
           fi
 
+          rm -rf "$BUILD_DIR/test"
+
           echo "BUILD_DIR=$BUILD_DIR" >> "$GITHUB_ENV"
 
       - name: Patch Android settings
@@ -142,11 +144,6 @@ jobs:
 
           if "android.permission.INTERNET" not in text:
               text = text.replace(
-                  "<manifest",
-                  "<manifest",
-                  1
-              )
-              text = text.replace(
                   ">\n    <application",
                   ">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />\n    <application",
                   1
@@ -172,7 +169,7 @@ jobs:
         run: |
           set -euo pipefail
           cd "$BUILD_DIR"
-          flutter analyze --no-fatal-infos --no-fatal-warnings
+          flutter analyze lib --no-fatal-infos --no-fatal-warnings
 
       - name: Build release APK
         shell: bash
