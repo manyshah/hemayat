@@ -92,7 +92,7 @@ jobs:
 
           BUILD_DIR="$RUNNER_TEMP/hemayat_build"
 
-          flutter create --platforms=android --project-name=hemayat_webapp --org=ir.samanyaar "$BUILD_DIR"
+          flutter create --platforms=android --project-name=hemayat --org=ir.samanyaar "$BUILD_DIR"
 
           rsync -a "$SOURCE_DIR/lib/" "$BUILD_DIR/lib/"
           cp "$SOURCE_DIR/pubspec.yaml" "$BUILD_DIR/pubspec.yaml"
@@ -109,7 +109,7 @@ jobs:
 
           echo "BUILD_DIR=$BUILD_DIR" >> "$GITHUB_ENV"
 
-      - name: Patch Android settings
+      - name: Patch Android label and permissions
         shell: bash
         run: |
           set -euo pipefail
@@ -118,8 +118,6 @@ jobs:
           python3 <<'PY'
           from pathlib import Path
 
-          app_id = "ir.samanyaar.hemayat"
-          old_app_id = "ir.samanyaar.hemayat_webapp"
           app_label = "سامانه‌یار حمایت"
 
           for file_name in ["android/app/build.gradle.kts", "android/app/build.gradle"]:
@@ -128,15 +126,8 @@ jobs:
                   continue
 
               text = p.read_text(encoding="utf-8")
-
-              text = text.replace(f'namespace = "{old_app_id}"', f'namespace = "{app_id}"')
-              text = text.replace(f'applicationId = "{old_app_id}"', f'applicationId = "{app_id}"')
-              text = text.replace(f'namespace "{old_app_id}"', f'namespace "{app_id}"')
-              text = text.replace(f'applicationId "{old_app_id}"', f'applicationId "{app_id}"')
-
               text = text.replace("minSdk = flutter.minSdkVersion", "minSdk = 24")
               text = text.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 24")
-
               p.write_text(text, encoding="utf-8")
 
           manifest = Path("android/app/src/main/AndroidManifest.xml")
@@ -149,6 +140,7 @@ jobs:
                   1
               )
 
+          text = text.replace('android:label="hemayat"', f'android:label="{app_label}"')
           text = text.replace('android:label="hemayat_webapp"', f'android:label="{app_label}"')
 
           if "android:usesCleartextTraffic" not in text:
@@ -163,6 +155,13 @@ jobs:
           set -euo pipefail
           cd "$BUILD_DIR"
           flutter pub get
+
+      - name: Generate launcher icons
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$BUILD_DIR"
+          dart run flutter_launcher_icons
 
       - name: Analyze project
         shell: bash
@@ -179,10 +178,10 @@ jobs:
           flutter build apk --release --no-shrink
 
           mkdir -p "$GITHUB_WORKSPACE/release"
-          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/release/hemayat_webapp_v1_release.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/release/hemayat_webapp_v1_2_release.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: hemayat-webapp-v1-release-apk
-          path: release/hemayat_webapp_v1_release.apk
+          name: hemayat-webapp-v1-2-release-apk
+          path: release/hemayat_webapp_v1_2_release.apk
