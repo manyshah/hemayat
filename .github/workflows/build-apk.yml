@@ -73,7 +73,7 @@ jobs:
             done < <(find . -maxdepth 3 -type f -name "*.zip" | sort)
 
             if [ -z "$FOUND" ]; then
-              echo "No valid Flutter ZIP found. Upload hemayat_webapp_v1_3_custom_login_source.zip or extract it into repository root."
+              echo "No valid Flutter ZIP found. Upload hemayat_webapp_v1_4_compact_login_source.zip or extract it into repository root."
               exit 1
             fi
           fi
@@ -178,10 +178,10 @@ jobs:
           flutter build apk --release --no-shrink
 
           mkdir -p "$GITHUB_WORKSPACE/release"
-          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/release/hemayat_webapp_v1_3_custom_login_release.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/release/hemayat_webapp_v1_4_compact_login_release.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: hemayat-webapp-v1-3-custom-login-release-apk
-          path: release/hemayat_webapp_v1_3_custom_login_release.apk
+          name: hemayat-webapp-v1-4-compact-login-release-apk
+          path: release/hemayat_webapp_v1_4_compact_login_release.apk
