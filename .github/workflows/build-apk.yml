@@ -1,4 +1,4 @@
-name: Build Hemayat WebApp APK
+name: Build Hemayat WebApp Signed APK
 
 on:
   workflow_dispatch:
@@ -73,7 +73,7 @@ jobs:
             done < <(find . -maxdepth 3 -type f -name "*.zip" | sort)
 
             if [ -z "$FOUND" ]; then
-              echo "No valid Flutter ZIP found. Upload hemayat_webapp_v1_4_compact_login_source.zip or extract it into repository root."
+              echo "No valid Flutter ZIP found. Upload hemayat_webapp_v1_5_final_signed_source.zip or extract it into repository root."
               exit 1
             fi
           fi
@@ -115,7 +115,7 @@ jobs:
           set -euo pipefail
           cd "$BUILD_DIR"
 
-          python3 <<'PY'
+          python3 <<'PYCODE'
           from pathlib import Path
 
           app_label = "سامانه‌یار حمایت"
@@ -137,7 +137,7 @@ jobs:
               text = text.replace(
                   ">\n    <application",
                   ">\n    <uses-permission android:name=\"android.permission.INTERNET\" />\n    <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\" />\n    <application",
-                  1
+                  1,
               )
 
           text = text.replace('android:label="hemayat"', f'android:label="{app_label}"')
@@ -147,7 +147,102 @@ jobs:
               text = text.replace("<application", '<application android:usesCleartextTraffic="false"', 1)
 
           manifest.write_text(text, encoding="utf-8")
-          PY
+          PYCODE
+
+      - name: Prepare release signing
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          cd "$BUILD_DIR"
+
+          SIGNING_READY="false"
+          KEYSTORE_PATH="$BUILD_DIR/android/app/gamino-release-key.jks"
+          LOCAL_KEYSTORE="$SOURCE_DIR/android_signing/gamino-release-key.jks"
+          LOCAL_KEYPROPS="$SOURCE_DIR/android_signing/key.properties"
+
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "Decoding keystore from GitHub Secret..."
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+            SIGNING_READY="true"
+          elif [ -f "$LOCAL_KEYSTORE" ]; then
+            echo "Using local keystore from android_signing directory..."
+            cp "$LOCAL_KEYSTORE" "$KEYSTORE_PATH"
+            SIGNING_READY="true"
+          else
+            echo "No release keystore found. APK will be built without custom release signing."
+          fi
+
+          if [ "$SIGNING_READY" = "true" ]; then
+            if [ -f "$LOCAL_KEYPROPS" ]; then
+              echo "Loading local key.properties..."
+              STORE_PASSWORD="$(grep '^storePassword=' "$LOCAL_KEYPROPS" | cut -d= -f2-)"
+              KEY_PASSWORD="$(grep '^keyPassword=' "$LOCAL_KEYPROPS" | cut -d= -f2-)"
+              KEY_ALIAS="$(grep '^keyAlias=' "$LOCAL_KEYPROPS" | cut -d= -f2-)"
+            else
+              STORE_PASSWORD="${ANDROID_KEYSTORE_PASSWORD:-}"
+              KEY_PASSWORD="${ANDROID_KEY_PASSWORD:-}"
+              KEY_ALIAS="${ANDROID_KEY_ALIAS:-}"
+            fi
+
+            if [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_PASSWORD" ] || [ -z "$KEY_ALIAS" ]; then
+              echo "Keystore exists, but signing values are missing."
+              echo "Add android_signing/key.properties or GitHub Secrets."
+              exit 1
+            fi
+
+            {
+              echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH"
+              echo "ANDROID_KEYSTORE_PASSWORD=$STORE_PASSWORD"
+              echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+              echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
+              echo "HAS_RELEASE_SIGNING=true"
+            } >> "$GITHUB_ENV"
+
+            python3 <<'PYCODE'
+          from pathlib import Path
+
+          p = Path("android/app/build.gradle.kts")
+          if not p.exists():
+              p = Path("android/app/build.gradle")
+
+          text = p.read_text(encoding="utf-8")
+
+          if "System.getenv(\"ANDROID_KEYSTORE_PASSWORD\")" not in text:
+              marker = "android {"
+              replacement = '''android {
+              signingConfigs {
+                  create("release") {
+                      storeFile = file(System.getenv("ANDROID_KEYSTORE_PATH"))
+                      storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                      keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                      keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                  }
+              }
+          '''
+              text = text.replace(marker, replacement, 1)
+
+          text = text.replace(
+              "signingConfig = signingConfigs.getByName(\"debug\")",
+              "signingConfig = signingConfigs.getByName(\"release\")",
+          )
+
+          if "signingConfig = signingConfigs.getByName(\"release\")" not in text:
+              text = text.replace(
+                  "buildTypes {\n        release {",
+                  "buildTypes {\n        release {\n            signingConfig = signingConfigs.getByName(\"release\")",
+                  1,
+              )
+
+          p.write_text(text, encoding="utf-8")
+          PYCODE
+          else
+            echo "HAS_RELEASE_SIGNING=false" >> "$GITHUB_ENV"
+          fi
 
       - name: Get dependencies
         shell: bash
@@ -178,10 +273,10 @@ jobs:
           flutter build apk --release --no-shrink
 
           mkdir -p "$GITHUB_WORKSPACE/release"
-          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/release/hemayat_webapp_v1_4_compact_login_release.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/release/hemayat_webapp_v1_5_final_signed_release.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: hemayat-webapp-v1-4-compact-login-release-apk
-          path: release/hemayat_webapp_v1_4_compact_login_release.apk
+          name: hemayat-webapp-v1-5-final-signed-release-apk
+          path: release/hemayat_webapp_v1_5_final_signed_release.apk
