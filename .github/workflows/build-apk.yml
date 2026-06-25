@@ -65,7 +65,7 @@ jobs:
             done < <(find . -maxdepth 3 -type f -name "*.zip" | sort)
 
             if [ -z "$FOUND" ]; then
-              echo "No valid Flutter ZIP found. Upload hemayat_webapp_v2_1_adivery_banner_signed_source.zip or extract it into repository root."
+              echo "No valid Flutter ZIP found. Upload hemayat_webapp_v2_1_adivery_banner_r8fix_signed_source.zip or extract it into repository root."
               exit 1
             fi
           fi
@@ -94,7 +94,7 @@ jobs:
           rm -rf "$BUILD_DIR/test"
           echo "BUILD_DIR=$BUILD_DIR" >> "$GITHUB_ENV"
 
-      - name: Patch Android label and permissions
+      - name: Patch Android label, permissions and Adivery R8 rules
         shell: bash
         run: |
           set -euo pipefail
@@ -104,18 +104,33 @@ jobs:
 
           app_label = "استعلام کالابرگ و یارانه"
 
-          for file_name in ["android/app/build.gradle.kts", "android/app/build.gradle"]:
-              p = Path(file_name)
+          gradle_paths = [Path("android/app/build.gradle.kts"), Path("android/app/build.gradle")]
+          for p in gradle_paths:
               if not p.exists():
                   continue
               text = p.read_text(encoding="utf-8")
               text = text.replace("minSdk = flutter.minSdkVersion", "minSdk = 24")
               text = text.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 24")
+
+              if p.suffix == ".kts":
+                  if "proguardFiles(" not in text:
+                      text = text.replace(
+                          "buildTypes {\n        release {",
+                          "buildTypes {\n        release {\n            isMinifyEnabled = false\n            isShrinkResources = false\n            proguardFiles(getDefaultProguardFile(\"proguard-android-optimize.txt\"), \"proguard-rules.pro\")",
+                          1,
+                      )
+              else:
+                  if "proguardFiles" not in text:
+                      text = text.replace(
+                          "buildTypes {\n        release {",
+                          "buildTypes {\n        release {\n            minifyEnabled false\n            shrinkResources false\n            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'",
+                          1,
+                      )
+
               p.write_text(text, encoding="utf-8")
 
           manifest = Path("android/app/src/main/AndroidManifest.xml")
           text = manifest.read_text(encoding="utf-8")
-
           if "android.permission.INTERNET" not in text:
               text = text.replace(
                   ">\n    <application",
@@ -130,6 +145,22 @@ jobs:
               text = text.replace("<application", '<application android:usesCleartextTraffic="false"', 1)
 
           manifest.write_text(text, encoding="utf-8")
+
+          proguard = Path("android/app/proguard-rules.pro")
+          proguard.write_text("""
+          -dontwarn com.mbridge.**
+          -dontwarn com.mintegral.**
+          -dontwarn com.anythink.**
+          -dontwarn com.ironsource.**
+          -dontwarn com.unity3d.**
+          -dontwarn com.applovin.**
+          -dontwarn com.vungle.**
+          -dontwarn com.chartboost.**
+
+          -keep class com.adivery.** { *; }
+          -keep class com.adivery.sdk.** { *; }
+          -keep class com.google.android.gms.ads.** { *; }
+          """.strip() + "\n", encoding="utf-8")
           PYCODE
 
       - name: Prepare release signing
@@ -170,11 +201,13 @@ jobs:
               KEY_PASSWORD="${ANDROID_KEY_PASSWORD:-}"
               KEY_ALIAS="${ANDROID_KEY_ALIAS:-}"
             fi
+
             if [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_PASSWORD" ] || [ -z "$KEY_ALIAS" ]; then
               echo "Keystore exists, but signing values are missing."
               echo "Add android_signing/key.properties or GitHub Secrets."
               exit 1
             fi
+
             {
               echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH"
               echo "ANDROID_KEYSTORE_PASSWORD=$STORE_PASSWORD"
@@ -259,10 +292,10 @@ jobs:
           cd "$BUILD_DIR"
           flutter build apk --release --no-shrink
           mkdir -p "$GITHUB_WORKSPACE/release"
-          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/release/kalabarg_yaraneh_v2_1_adivery_banner_release.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/release/kalabarg_yaraneh_v2_1_adivery_banner_r8fix_release.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kalabarg-yaraneh-v2-1-adivery-banner-release-apk
-          path: release/kalabarg_yaraneh_v2_1_adivery_banner_release.apk
+          name: kalabarg-yaraneh-v2-1-adivery-banner-r8fix-release-apk
+          path: release/kalabarg_yaraneh_v2_1_adivery_banner_r8fix_release.apk
