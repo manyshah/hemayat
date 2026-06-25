@@ -1,4 +1,4 @@
-name: Build Hemayat Simple WebView Signed APK
+name: Build Kalabarg Yaraneh Signed APK
 
 on:
   workflow_dispatch:
@@ -35,9 +35,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           echo "Checking source..."
-
           SOURCE_DIR="$RUNNER_TEMP/source"
           mkdir -p "$SOURCE_DIR"
 
@@ -46,20 +44,14 @@ jobs:
             rsync -a --exclude='.git' ./ "$SOURCE_DIR/"
           else
             echo "pubspec.yaml not found in root. Searching ZIP files..."
-
             FOUND=""
-
             while IFS= read -r ZIP_FILE; do
               echo "Checking ZIP: $ZIP_FILE"
-
               TEST_DIR="$RUNNER_TEMP/test_zip"
               rm -rf "$TEST_DIR"
               mkdir -p "$TEST_DIR"
-
               unzip -q "$ZIP_FILE" -d "$TEST_DIR" || true
-
               PUBSPEC_PATH="$(find "$TEST_DIR" -type f -name "pubspec.yaml" | head -n 1 || true)"
-
               if [ -n "$PUBSPEC_PATH" ]; then
                 FOUND="$ZIP_FILE"
                 ROOT_DIR="$(dirname "$PUBSPEC_PATH")"
@@ -73,7 +65,7 @@ jobs:
             done < <(find . -maxdepth 3 -type f -name "*.zip" | sort)
 
             if [ -z "$FOUND" ]; then
-              echo "No valid Flutter ZIP found. Upload hemayat_webapp_v2_0_simple_webview_signed_source.zip or extract it into repository root."
+              echo "No valid Flutter ZIP found. Upload hemayat_webapp_v2_1_adivery_banner_signed_source.zip or extract it into repository root."
               exit 1
             fi
           fi
@@ -89,24 +81,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
-          BUILD_DIR="$RUNNER_TEMP/hemayat_build"
-
-          flutter create --platforms=android --project-name=hemayat --org=ir.samanyaar "$BUILD_DIR"
-
+          BUILD_DIR="$RUNNER_TEMP/kalabarg_build"
+          flutter create --platforms=android --project-name=hemayat --org=com.manyshah "$BUILD_DIR"
           rsync -a "$SOURCE_DIR/lib/" "$BUILD_DIR/lib/"
           cp "$SOURCE_DIR/pubspec.yaml" "$BUILD_DIR/pubspec.yaml"
-
           if [ -d "$SOURCE_DIR/assets" ]; then
             rsync -a "$SOURCE_DIR/assets/" "$BUILD_DIR/assets/"
           fi
-
           if [ -f "$SOURCE_DIR/analysis_options.yaml" ]; then
             cp "$SOURCE_DIR/analysis_options.yaml" "$BUILD_DIR/analysis_options.yaml"
           fi
-
           rm -rf "$BUILD_DIR/test"
-
           echo "BUILD_DIR=$BUILD_DIR" >> "$GITHUB_ENV"
 
       - name: Patch Android label and permissions
@@ -114,17 +99,15 @@ jobs:
         run: |
           set -euo pipefail
           cd "$BUILD_DIR"
-
-          python3 <<'PYCODE'
+          python3 - <<'PYCODE'
           from pathlib import Path
 
-          app_label = "سامانه‌یار حمایت"
+          app_label = "استعلام کالابرگ و یارانه"
 
           for file_name in ["android/app/build.gradle.kts", "android/app/build.gradle"]:
               p = Path(file_name)
               if not p.exists():
                   continue
-
               text = p.read_text(encoding="utf-8")
               text = text.replace("minSdk = flutter.minSdkVersion", "minSdk = 24")
               text = text.replace("minSdkVersion flutter.minSdkVersion", "minSdkVersion 24")
@@ -159,7 +142,6 @@ jobs:
         run: |
           set -euo pipefail
           cd "$BUILD_DIR"
-
           SIGNING_READY="false"
           KEYSTORE_PATH="$BUILD_DIR/android/app/gamino-release-key.jks"
           LOCAL_KEYSTORE="$SOURCE_DIR/android_signing/gamino-release-key.jks"
@@ -188,13 +170,11 @@ jobs:
               KEY_PASSWORD="${ANDROID_KEY_PASSWORD:-}"
               KEY_ALIAS="${ANDROID_KEY_ALIAS:-}"
             fi
-
             if [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_PASSWORD" ] || [ -z "$KEY_ALIAS" ]; then
               echo "Keystore exists, but signing values are missing."
               echo "Add android_signing/key.properties or GitHub Secrets."
               exit 1
             fi
-
             {
               echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH"
               echo "ANDROID_KEYSTORE_PASSWORD=$STORE_PASSWORD"
@@ -202,9 +182,17 @@ jobs:
               echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
               echo "HAS_RELEASE_SIGNING=true"
             } >> "$GITHUB_ENV"
+          else
+            echo "HAS_RELEASE_SIGNING=false" >> "$GITHUB_ENV"
+          fi
 
-            python3 <<'PYCODE'
+          export SIGNING_READY_LOCAL="$SIGNING_READY"
+          python3 - <<'PYCODE'
+          import os
           from pathlib import Path
+
+          if os.environ.get("SIGNING_READY_LOCAL") != "true":
+              raise SystemExit
 
           p = Path("android/app/build.gradle.kts")
           if not p.exists():
@@ -242,9 +230,6 @@ jobs:
 
           p.write_text(text, encoding="utf-8")
           PYCODE
-          else
-            echo "HAS_RELEASE_SIGNING=false" >> "$GITHUB_ENV"
-          fi
 
       - name: Get dependencies
         shell: bash
@@ -273,12 +258,11 @@ jobs:
           set -euo pipefail
           cd "$BUILD_DIR"
           flutter build apk --release --no-shrink
-
           mkdir -p "$GITHUB_WORKSPACE/release"
-          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/release/hemayat_webapp_v2_0_simple_webview_release.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/release/kalabarg_yaraneh_v2_1_adivery_banner_release.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: hemayat-webapp-v2-0-simple-webview-release-apk
-          path: release/hemayat_webapp_v2_0_simple_webview_release.apk
+          name: kalabarg-yaraneh-v2-1-adivery-banner-release-apk
+          path: release/kalabarg_yaraneh_v2_1_adivery_banner_release.apk
